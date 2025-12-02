@@ -4,61 +4,111 @@ import LoginScreen from './components/LoginScreen';
 import Sidebar from './components/Sidebar';
 import MainDashboard from './components/MainDashboard';
 import LiveTV from './components/LiveTV';
-import { fetchCategories, fetchStreams } from './services/xtreamService';
-import { Clapperboard } from 'lucide-react';
+import { login, fetchCategories, fetchAllStreams, getProfile } from './services/xtreamService';
+import { Clapperboard, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [credentials, setCredentials] = useState<UserCredentials | null>(null);
   const [categories, setCategories] = useState<XtreamCategory[]>([]);
   const [streams, setStreams] = useState<XtreamStream[]>([]);
+  const [isLoading, setIsLoading] = useState(true); // Start loading to check for session
 
   // Navigation State
   const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.HOME); // Default to HOME
 
-  // Live TV State
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('4');
-  const [selectedStream, setSelectedStream] = useState<XtreamStream | null>(null);
-
-  // Load Categories on Login
+  // Check for existing token on mount
   useEffect(() => {
-    if (credentials) {
-      fetchCategories(credentials.url)
-        .then(data => {
-          setCategories(data);
-        })
-        .catch(err => console.error(err));
-    }
-  }, [credentials]);
+    const restoreSession = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          // 1. Get Profile to restore credentials (or at least valid session state)
+          const profile = await getProfile();
 
-  // Load Streams when Category Changes - Logic kept for data fetching, but LiveTV handles its own filtering now if we pass all streams. 
-  // However, fetching ALL streams might be heavy. The new LiveTV expects 'streams' prop. 
-  // If we want to keep the category-based fetching optimization, we might need to adapt LiveTV to handle async loading or just fetch all for now if the API supports it.
-  // For this port, assuming we fetch streams based on selected category is still valid, BUT the new UI expects to show categories AND channels.
-  // If the new UI expects to browse categories, it needs data.
-  // Let's assume for now we fetch a default category or try to fetch more. 
-  // To make the new UI work as intended (browsing categories), we ideally need all streams or fetch on demand.
-  // Given the constraints and the previous code, let's fetch a default category's streams to populate the UI initially.
-  useEffect(() => {
-    if (credentials && selectedCategoryId) {
-      fetchStreams(credentials.url, selectedCategoryId)
-        .then(data => {
-          setStreams(data);
-        });
-    }
-  }, [credentials, selectedCategoryId]);
+          // The profile contains decrypted credentials in user.iptv_credentials
+          // We need to map this to UserCredentials
+          if (profile && (profile as any).user && (profile as any).user.iptv_credentials) {
+            const savedCreds = (profile as any).user.iptv_credentials;
+            setCredentials(savedCreds);
 
-  const handleLogin = (creds: UserCredentials) => {
-    setCredentials(creds);
+            // 2. Fetch All Data
+            const [cats, allStreams] = await Promise.all([
+              fetchCategories(savedCreds.url),
+              fetchAllStreams()
+            ]);
+            setCategories(cats);
+            setStreams(allStreams);
+          } else {
+            // Invalid profile structure, force login
+            localStorage.removeItem('token');
+          }
+        } catch (error) {
+          console.error("Session restoration failed:", error);
+          localStorage.removeItem('token');
+        }
+      }
+      setIsLoading(false);
+    };
+
+    restoreSession();
+  }, []);
+
+  const handleLogin = async (creds: UserCredentials) => {
+    setIsLoading(true);
+    try {
+      // 1. Login to get token
+      await login(creds);
+      setCredentials(creds);
+
+      // 2. Fetch All Data (Categories & Streams)
+      // We do this here to "process all channels" as requested
+      const [cats, allStreams] = await Promise.all([
+        fetchCategories(creds.url),
+        fetchAllStreams()
+      ]);
+
+      setCategories(cats);
+      setStreams(allStreams);
+
+    } catch (error) {
+      console.error("Login or Fetch Error:", error);
+      alert("Login failed or error fetching data. Please check credentials and server.");
+      setCredentials(null);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLogout = () => {
     setCredentials(null);
     setCategories([]);
     setStreams([]);
+    localStorage.removeItem('token');
+    localStorage.removeItem('favorite_categories');
   };
 
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center text-white">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-500 mb-4" />
+        <p className="text-xl font-light">Restaurando sesión...</p>
+      </div>
+    );
+  }
+
   if (!credentials) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return (
+      <>
+        <LoginScreen onLogin={handleLogin} />
+        {isLoading && (
+          <div className="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center text-white">
+            <Loader2 className="w-12 h-12 animate-spin text-blue-500 mb-4" />
+            <p className="text-xl font-light">Conectando y procesando canales...</p>
+            <p className="text-sm text-white/50 mt-2">Esto puede tardar unos segundos dependiendo de la cantidad de canales.</p>
+          </div>
+        )}
+      </>
+    );
   }
 
   return (
@@ -90,9 +140,9 @@ const App: React.FC = () => {
           {/* VIEW: LIVE TV (New Immersive Layout) */}
           {currentView === ViewMode.LIVE_TV && (
             <LiveTV
-              streams={streams}
-              categories={categories}
-              onPlayStream={(stream) => console.log('Playing', stream)}
+              allCategories={categories}
+              allStreams={streams}
+              isLoading={isLoading}
             />
           )}
 

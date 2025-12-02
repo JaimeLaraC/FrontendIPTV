@@ -20,10 +20,10 @@ const backgroundImages = [
 ];
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
-  const [playlistName, setPlaylistName] = useState('');
-  const [username, setUsername] = useState('demo');
-  const [password, setPassword] = useState('demo');
-  const [url, setUrl] = useState('http://mock-xtream-url.com');
+  const [playlistName, setPlaylistName] = useState('Mi Lista Xtream');
+  const [username, setUsername] = useState('4c47a8916ddf');
+  const [password, setPassword] = useState('308c76655a');
+  const [url, setUrl] = useState('http://porn45877.cdn-akm.me');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // Background slideshow logic

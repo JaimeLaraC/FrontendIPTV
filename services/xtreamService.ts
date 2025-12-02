@@ -1,129 +1,109 @@
-import { XtreamCategory, XtreamStream } from '../types';
+import axios from 'axios';
+import { XtreamCategory, XtreamStream, Credentials, AccountInfo } from '../types';
 
-// Mock Data Generators for Visual Demo
+// Use localhost for development, but this should ideally be configurable
+const API_BASE_URL = 'http://localhost:3000/api';
 
-export const mockCategories: XtreamCategory[] = [
-  { category_id: "1", category_name: "Ukraine", parent_id: 0 },
-  { category_id: "2", category_name: "Brazil", parent_id: 0 },
-  { category_id: "3", category_name: "Germany", parent_id: 0 },
-  { category_id: "4", category_name: "United States", parent_id: 0 },
-  { category_id: "5", category_name: "France", parent_id: 0 },
-  { category_id: "6", category_name: "Portugal", parent_id: 0 },
-  { category_id: "7", category_name: "South Africa", parent_id: 0 },
-  { category_id: "8", category_name: "China", parent_id: 0 },
-];
+// Helper to get auth headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  };
+};
 
-export const mockStreams: XtreamStream[] = [
-  {
-    num: 1,
-    name: "Nat Geo Wild HD",
-    stream_type: "live",
-    stream_id: 101,
-    stream_icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Nat_Geo_Wild_logo.svg/2560px-Nat_Geo_Wild_logo.svg.png", // Placeholder
-    epg_channel_id: "natgeo",
-    added: "2023-01-01",
-    category_id: "4",
-    custom_sid: "",
-    tv_archive: 1,
-    direct_source: "",
-    tv_archive_duration: 0,
-    views: "+8.2M Views",
-    tags: ["HD", "EPG"]
-  },
-  {
-    num: 2,
-    name: "Disney Channel",
-    stream_type: "live",
-    stream_id: 102,
-    stream_icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Disney_Channel_logo.svg/2560px-Disney_Channel_logo.svg.png",
-    epg_channel_id: "disney",
-    added: "2023-01-01",
-    category_id: "4",
-    custom_sid: "",
-    tv_archive: 0,
-    direct_source: "",
-    tv_archive_duration: 0,
-    views: "850K Views",
-    tags: ["4K", "EPG", "$"]
-  },
-  {
-    num: 3,
-    name: "HBO Family",
-    stream_type: "live",
-    stream_id: 103,
-    stream_icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/HBO_logo.svg/2560px-HBO_logo.svg.png",
-    epg_channel_id: "hbo",
-    added: "2023-01-01",
-    category_id: "4",
-    custom_sid: "",
-    tv_archive: 0,
-    direct_source: "",
-    tv_archive_duration: 0,
-    views: "1.7M Views",
-    tags: ["HD"]
-  },
-  {
-    num: 4,
-    name: "Discovery Science",
-    stream_type: "live",
-    stream_id: 104,
-    stream_icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Discovery_Science_201x_logo.svg/1200px-Discovery_Science_201x_logo.svg.png",
-    epg_channel_id: "discovery",
-    added: "2023-01-01",
-    category_id: "4",
-    custom_sid: "",
-    tv_archive: 0,
-    direct_source: "",
-    tv_archive_duration: 0,
-    views: "500K Views",
-    tags: ["FHD"]
-  },
-  {
-    num: 5,
-    name: "ESPN Sport",
-    stream_type: "live",
-    stream_id: 105,
-    stream_icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/ESPN_logo.svg/2560px-ESPN_logo.svg.png",
-    epg_channel_id: "espn",
-    added: "2023-01-01",
-    category_id: "4",
-    custom_sid: "",
-    tv_archive: 0,
-    direct_source: "",
-    tv_archive_duration: 0,
-    views: "12M Views",
-    tags: ["HD", "LIVE"]
+export const login = async (credentials: Credentials): Promise<{ token: string, user: any }> => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/auth/login`, {
+      username: credentials.username,
+      password: credentials.password,
+      url: credentials.url
+    });
+
+    if (response.data.success) {
+      localStorage.setItem('token', response.data.data.token);
+      return response.data.data;
+    }
+    throw new Error(response.data.error || 'Login failed');
+  } catch (error: any) {
+    throw new Error(error.response?.data?.error || error.message || 'Login failed');
   }
-];
+};
+
+export const getProfile = async (): Promise<AccountInfo> => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/auth/profile`, getAuthHeaders());
+    if (response.data.success) {
+      // Transform backend response to match AccountInfo interface if needed
+      // The backend returns { user: { iptv_credentials: { ... } } }
+      // We might need to map this to the expected AccountInfo structure if it differs
+      // For now, let's assume we can get the necessary info or we might need to adjust types.ts
+      // But based on types.ts, AccountInfo expects user_info and server_info.
+      // The backend profile endpoint returns decrypted credentials but maybe not the full xtream user_info/server_info 
+      // unless we fetch it from the xtream API via the backend.
+      // Actually, the backend doesn't seem to expose a direct "get xtream profile" endpoint that returns user_info/server_info directly 
+      // in the same format as the Xtream API. 
+      // However, for the purpose of this task (connecting frontend/backend), let's focus on channels.
+      // If we need account info, we might need to add an endpoint or use what we have.
+      return response.data.data;
+    }
+    throw new Error('Failed to fetch profile');
+  } catch (error: any) {
+    throw new Error(error.response?.data?.error || error.message);
+  }
+}
+
+export const fetchCategories = async (url: string = '', type: string = 'get_live_categories'): Promise<XtreamCategory[]> => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/live/categories`, {}, getAuthHeaders());
+    if (response.data.success) {
+      return response.data.data;
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    return [];
+  }
+};
+
+export const fetchStreams = async (url: string = '', categoryId: string, type: string = 'get_live_streams'): Promise<XtreamStream[]> => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/live/streams/${categoryId}`, {}, getAuthHeaders());
+    if (response.data.success) {
+      return response.data.data;
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching streams:', error);
+    return [];
+  }
+};
+
+export const fetchAllStreams = async (): Promise<XtreamStream[]> => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/live/streams`, {}, getAuthHeaders());
+    if (response.data.success) {
+      return response.data.data;
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching all streams:', error);
+    return [];
+  }
+};
 
 export const getCountryFlag = (categoryName: string) => {
-  const map: Record<string, string> = {
-    "Ukraine": "🇺🇦",
-    "Brazil": "🇧🇷",
-    "Germany": "🇩🇪",
-    "United States": "🇺🇸",
-    "France": "🇫🇷",
-    "Portugal": "🇵🇹",
-    "South Africa": "🇿🇦",
-    "China": "🇨🇳"
-  };
-  return map[categoryName] || "📺";
-};
-
-// Simulated Service Calls
-export const fetchCategories = async (url: string, type: string = 'get_live_categories'): Promise<XtreamCategory[]> => {
-  // In a real app, this would use fetch() with the xtream params
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(mockCategories), 500);
-  });
-};
-
-export const fetchStreams = async (url: string, categoryId: string, type: string = 'get_live_streams'): Promise<XtreamStream[]> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-        // Return mostly US channels for demo if US selected, otherwise empty or generic
-        if(categoryId === "4") return resolve(mockStreams);
-        return resolve([]); 
-    }, 600);
-  });
+  // Simple mapping, can be expanded
+  if (categoryName.toLowerCase().includes('ukraine')) return "🇺🇦";
+  if (categoryName.toLowerCase().includes('brazil')) return "🇧🇷";
+  if (categoryName.toLowerCase().includes('germany')) return "🇩🇪";
+  if (categoryName.toLowerCase().includes('usa') || categoryName.toLowerCase().includes('united states')) return "🇺🇸";
+  if (categoryName.toLowerCase().includes('france')) return "🇫🇷";
+  if (categoryName.toLowerCase().includes('portugal')) return "🇵🇹";
+  if (categoryName.toLowerCase().includes('spain')) return "🇪🇸";
+  if (categoryName.toLowerCase().includes('italy')) return "🇮🇹";
+  if (categoryName.toLowerCase().includes('uk') || categoryName.toLowerCase().includes('united kingdom')) return "🇬🇧";
+  return "📺";
 };
